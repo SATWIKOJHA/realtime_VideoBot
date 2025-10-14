@@ -23,7 +23,7 @@ import re
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # --- CONFIGURATION ---
-LLM_ENDPOINT = "http://49.50.117.66:8001/v1/chat/completions"
+LLM_ENDPOINT = //PUT YOUR OWN LLM API
 LLM_MODEL = "/workspace/models/scout-fp4"
 
 # PIPER TTS (AMY MEDIUM + VERY SLOW SPEED)
