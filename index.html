@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Bot Test</title>
+    <title>Video Bot with Voice</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -99,28 +99,6 @@
         .video-bot-container.closing {
             transform: translateX(100%);
             opacity: 0;
-        }
-        
-        @keyframes shutterOpen {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-        
-        @keyframes shutterClose {
-            from {
-                transform: translateX(0);
-                opacity: 1;
-            }
-            to {
-                transform: translateX(100%);
-                opacity: 0;
-            }
         }
         
         .close-btn {
@@ -320,10 +298,55 @@
             padding: 10px 15px;
         }
         
-        .mic-icon {
+        .mic-button {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: #444;
             color: #aaa;
-            font-size: 18px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
             cursor: pointer;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .mic-button:hover {
+            background: #555;
+            color: white;
+            transform: scale(1.1);
+        }
+
+        .mic-button.listening {
+            background: #ff3b30;
+            color: white;
+            animation: pulseRed 1.5s infinite;
+        }
+
+        @keyframes pulseRed {
+            0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 59, 48, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+        }
+
+        .stt-error {
+            color: #ff6b6b;
+            font-size: 12px;
+            margin-top: 4px;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+            position: absolute;
+            bottom: 85px;
+            left: 20px;
+            right: 20px;
+            pointer-events: none;
+        }
+
+        .stt-error.show {
+            opacity: 1;
         }
         
         #user-input {
@@ -445,8 +468,8 @@
 <body>
     <div class="blank-page">
         <div class="welcome-text">
-            <h1>Video Bot Test</h1>
-            <p>Click the robot icon in the bottom right to open the Smart Video Assistant</p>
+            <h1>Video Bot with Voice</h1>
+            <p>Click the robot icon to open the Smart Video Assistant</p>
         </div>
     </div>
 
@@ -465,14 +488,16 @@
         
         <div class="message-container" id="message-container">
             <div class="message bot-message">
-                Hello! I'm your Smart Video Assistant. How can I help you today?
+                Hello! I'm your Smart Video Assistant. Speak or type to begin!
             </div>
         </div>
         
         <div class="input-area">
             <div class="input-container">
-                <div class="mic-icon"><i class="fas fa-microphone"></i></div>
-                <textarea id="user-input" placeholder="Type your message..." rows="1" autocomplete="off"></textarea>
+                <div class="mic-button" id="mic-button">
+                    <i class="fas fa-microphone"></i>
+                </div>
+                <textarea id="user-input" placeholder="Type or speak your message..." rows="1" autocomplete="off"></textarea>
             </div>
             <button class="send-btn" id="send-btn">
                 <i class="fas fa-paper-plane"></i>
@@ -482,6 +507,10 @@
         <div class="volume-control">
             <i class="fas fa-volume-up"></i>
             <input type="range" id="volume-slider" class="volume-slider" min="0" max="1" step="0.1" value="1">
+        </div>
+
+        <div class="stt-error" id="stt-error">
+            Speech not recognized. Try again or type manually.
         </div>
     </div>
 
@@ -495,10 +524,13 @@
         const videoPlayer = document.getElementById('video-player');
         const videoBackground = document.querySelector('.video-background');
         const volumeSlider = document.getElementById('volume-slider');
+        const micButton = document.getElementById('mic-button');
+        const sttErrorDiv = document.getElementById('stt-error');
         let thinkingIndicator = null;
         let isProcessing = false;
         let currentAvatar = "/static/avatar.png";
         let isBotOpen = false;
+        let recognition = null;
 
         const statusMessages = [
             "Preparing video content...", "Initializing video generation...", "Crafting visual magic...",
@@ -571,9 +603,72 @@
             }
         }
 
-        async function sendMessage(message) {
+        function showSTTError(show = true) {
+            sttErrorDiv.classList.toggle('show', show);
+            if (show) {
+                setTimeout(() => {
+                    sttErrorDiv.classList.remove('show');
+                }, 4000);
+            }
+        }
+
+        function startSpeechRecognition() {
             if (isProcessing) return;
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert("Speech recognition not supported in this browser. Please use Chrome or Edge.");
+                return;
+            }
+
+            if (!recognition) {
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+
+                recognition.onstart = () => {
+                    micButton.classList.add('listening');
+                    showSTTError(false);
+                };
+
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript.trim();
+                    micButton.classList.remove('listening');
+                    if (transcript) {
+                        userInput.value = transcript;
+                        sendMessage(transcript);
+                    }
+                };
+
+                recognition.onerror = (event) => {
+                    micButton.classList.remove('listening');
+                    console.error("Speech recognition error:", event.error);
+                    if (event.error === 'no-speech' || event.error === 'audio-capture') {
+                        showSTTError(true);
+                    } else if (event.error === 'not-allowed') {
+                        alert("Microphone access denied. Please allow mic permission and try again.");
+                    }
+                };
+
+                recognition.onend = () => {
+                    micButton.classList.remove('listening');
+                };
+            }
+
+            try {
+                recognition.start();
+            } catch (e) {
+                console.error("Failed to start recognition:", e);
+                micButton.classList.remove('listening');
+                showSTTError(true);
+            }
+        }
+
+        async function sendMessage(message) {
+            if (isProcessing || !message.trim()) return;
             addMessage(message, true);
+            userInput.value = '';
             userInput.disabled = true;
             sendBtn.disabled = true;
             isProcessing = true;
@@ -602,7 +697,7 @@
 
                 if (data.status === 'completed') {
                     showThinking(false);
-                    const botMsg = addMessage(data.response_text, false);
+                    addMessage(data.response_text, false);
                     if (data.video_url) {
                         videoPlayer.src = data.video_url + "?t=" + Date.now();
                         videoPlayer.style.display = 'block';
@@ -620,9 +715,6 @@
                     addMessage("Sorry, video generation failed. Please try again.", false);
                     resetInputState();
                 } else {
-                    if (data.response_text) {
-                        // Optional: show partial response during generation
-                    }
                     updateThinkingStatus();
                     setTimeout(() => pollVideoStatus(taskId), 1000);
                 }
@@ -647,9 +739,7 @@
             } else {
                 videoBotContainer.style.display = 'block';
                 videoBotContainer.classList.add('open');
-                videoBotContainer.style.animation = 'shutterOpen 0.5s cubic-bezier(0.77, 0, 0.175, 1)';
                 setTimeout(() => {
-                    videoBotContainer.style.animation = '';
                     isBotOpen = true;
                 }, 500);
             }
@@ -670,8 +760,11 @@
             const message = userInput.value.trim();
             if (message && !isProcessing) {
                 sendMessage(message);
-                userInput.value = '';
             }
+        });
+
+        micButton.addEventListener('click', () => {
+            startSpeechRecognition();
         });
 
         userInput.addEventListener('keypress', (e) => {
@@ -693,7 +786,7 @@
         window.onload = () => {
             const existingMessages = messageContainer.querySelectorAll('.message');
             if (existingMessages.length === 0) {
-                addMessage("Hello! I'm your Smart Video Assistant. How can I help you today?", false);
+                addMessage("Hello! I'm your Smart Video Assistant. Speak or type to begin!", false);
             }
         };
     </script>
